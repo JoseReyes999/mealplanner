@@ -11,6 +11,10 @@ def create_app(db_path=None):
     app.config["DB_PATH"] = db_path or config.DB_PATH
     db.init_app(app)
 
+    # Each domain registers its own routes. Imported here so tests can build the app cleanly.
+    from recipes.routes import bp as recipes_bp
+    app.register_blueprint(recipes_bp)
+
     @app.route("/")
     def index():
         return render_template("index.html")

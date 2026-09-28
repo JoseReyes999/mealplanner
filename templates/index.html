@@ -1,12 +1,6 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MealPlanner</title>
-</head>
-<body>
+{% extends "base.html" %}
+{% block content %}
   <h1>MealPlanner</h1>
   <p>Recipes and weekly meal plans for a shared flat.</p>
-</body>
-</html>
+  <p><a href="{{ url_for('recipes.list_view') }}">Browse recipes</a></p>
+{% endblock %}

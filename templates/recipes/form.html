@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · MealPlanner{% endblock %}
+{% block content %}
+  <h1>{{ title }}</h1>
+
+  {% if errors %}
+    <div class="errors">
+      <ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+
+  <form method="post">
+    <label for="name">Name</label>
+    <input id="name" name="name" value="{{ form.get('name', '') }}" required>
+
+    <label for="base_servings">Servings</label>
+    <input id="base_servings" name="base_servings" type="number" min="1"
+           value="{{ form.get('base_servings', '') }}" required>
+
+    <label for="ingredients">Ingredients</label>
+    <p class="hint">One per line: quantity, unit, name. Units: {{ units | join(', ') }}.
+      Example: <code>200 g flour</code></p>
+    <textarea id="ingredients" name="ingredients" rows="8">{{ form.get('ingredients', '') }}</textarea>
+
+    <label for="instructions">Instructions</label>
+    <textarea id="instructions" name="instructions" rows="6">{{ form.get('instructions', '') }}</textarea>
+
+    <button type="submit">Save</button>
+  </form>
+{% endblock %}
