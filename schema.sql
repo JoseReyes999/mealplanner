@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS ingredients (
   name NOT NULL UNIQUE COLLATE NOCASE
 );
 
-CREATE TABLE recipe_ingredients IF NOT EXISTS(
+CREATE TABLE IF NOT EXISTS recipe_ingredients (
   recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
   ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE RESTRICT,
   quantity REAL NOT NULL CHECK (quantity > 0),
