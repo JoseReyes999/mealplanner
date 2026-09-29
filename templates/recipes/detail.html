@@ -1,21 +1,23 @@
 {% extends "base.html" %}
-{% block title %}Recipes · MealPlanner{% endblock %}
+{% block title %}{{ recipe.name }} · MealPlanner{% endblock %}
 {% block content %}
+  <h1>{{ recipe.name }}</h1>
+  <p>Serves {{ recipe.base_servings }}</p>
+
+  <h2>Ingredients</h2>
+  <table>
+    {% for item in recipe.ingredients %}
+      <tr><td>{{ '%g' % item.quantity }} {{ item.unit }}</td><td>{{ item.name }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>Instructions</h2>
+  <p class="pre">{{ recipe.instructions }}</p>
+
   <div class="actions">
-    <h1>Recipes</h1>
-    <a class="button" href="{{ url_for('recipes.create_view') }}">+ New recipe</a>
+    <a class="button" href="{{ url_for('recipes.edit_view', recipe_id=recipe.id) }}">Edit</a>
+    <form method="post" action="{{ url_for('recipes.delete_view', recipe_id=recipe.id) }}">
+      <button type="submit">Delete</button>
+    </form>
   </div>
-  {% if recipes %}
-    <table>
-      <tr><th>Name</th><th>Servings</th></tr>
-      {% for recipe in recipes %}
-        <tr>
-          <td><a href="{{ url_for('recipes.detail_view', recipe_id=recipe.id) }}">{{ recipe.name }}</a></td>
-          <td>{{ recipe.base_servings }}</td>
-        </tr>
-      {% endfor %}
-    </table>
-  {% else %}
-    <p>No recipes yet.</p>
-  {% endif %}
 {% endblock %}
