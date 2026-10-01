@@ -7,6 +7,7 @@ planner noticing.
 """
 import db
 from recipes import repository
+from recipes.scaling import scale_ingredients
 
 
 def list_recipe_choices():
@@ -43,3 +44,13 @@ def get_recipe_ingredients(recipe_id):
             for line in recipe["ingredients"]
         ],
     }
+
+def get_scaled_ingredients(recipe_id, servings):
+  """The recipe's ingredient lines scaled to `servings`, or None if the recipe doesn't exist.
+
+  This is what the planner uses to build the shopping list.
+  """
+  recipe = get_recipe_ingredients(recipe_id)
+  if recipe is None:
+      return None
+  return scale_ingredients(recipe["ingredients"], recipe["base_servings"], servings)
