@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}{{ plan.name }} · MealPlanner{% endblock %}
+{% block content %}
+  <div class="actions">
+    <h1>{{ plan.name }}</h1>
+    <a class="button" href="{{ url_for('planner.shopping_list_view', plan_id=plan.id) }}">Shopping list</a>
+  </div>
+  <p>Week of {{ plan.week_start }}</p>
+
+  <table>
+    <tr>
+      <th>Day</th>
+      {% for slot in slots %}<th>{{ slot | capitalize }}</th>{% endfor %}
+    </tr>
+    {% for day in week %}
+      <tr>
+        <td><strong>{{ day.name }}</strong><br><span class="hint">{{ day.date.strftime('%d %b') }}</span></td>
+        {% for slot in slots %}
+          {% set entry = day.meals[slot] %}
+          <td>
+            {% if entry %}
+              {{ entry.recipe_name }} <span class="hint">({{ entry.servings }})</span>
+              <form method="post" class="inline"
+                    action="{{ url_for('planner.remove_entry_view', plan_id=plan.id, entry_id=entry.id) }}">
+                <button type="submit" class="small" title="Remove">×</button>
+              </form>
+            {% else %}
+              <span class="hint">-</span>
+            {% endif %}
+          </td>
+        {% endfor %}
+      </tr>
+    {% endfor %}
+  </table>
+
+  <h2>Add a recipe to a meal</h2>
+  {% if errors %}
+    <div class="errors">
+      <ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+
+  {% if recipes %}
+    <form method="post" action="{{ url_for('planner.add_entry_view', plan_id=plan.id) }}">
+      <label for="day">Day</label>
+      <select id="day" name="day">
+        {% for key, name in days %}
+          <option value="{{ key }}" {% if form.get('day') == key %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+
+      <label for="meal_slot">Meal</label>
+      <select id="meal_slot" name="meal_slot">
+        {% for slot in slots %}
+          <option value="{{ slot }}" {% if form.get('meal_slot') == slot %}selected{% endif %}>{{ slot | capitalize }}</option>
+        {% endfor %}
+      </select>
+
+      <label for="recipe_id">Recipe</label>
+      <select id="recipe_id" name="recipe_id">
+        {% for recipe in recipes %}
+          <option value="{{ recipe.id }}">{{ recipe.name }}</option>
+        {% endfor %}
+      </select>
+
+      <label for="servings">Servings</label>
+      <input id="servings" name="servings" type="number" min="1" value="{{ form.get('servings', 4) }}" required>
+
+      <p class="hint">If the meal already has a recipe, it will be replaced.</p>
+      <button type="submit">Add to plan</button>
+    </form>
+  {% else %}
+    <p>You need at least one recipe first. <a href="{{ url_for('recipes.create_view') }}">Create a recipe</a>.</p>
+  {% endif %}
+
+  <div class="actions">
+    <form method="post" action="{{ url_for('planner.delete_view', plan_id=plan.id) }}">
+      <button type="submit">Delete plan</button>
+    </form>
+  </div>
+{% endblock %}

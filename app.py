@@ -13,7 +13,9 @@ def create_app(db_path=None):
 
     # Each domain registers its own routes. Imported here so tests can build the app cleanly.
     from recipes.routes import bp as recipes_bp
+    from planner.routes import bp as planner_bp
     app.register_blueprint(recipes_bp)
+    app.register_blueprint(planner_bp)
 
     @app.route("/")
     def index():

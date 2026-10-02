@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Shopping list · {{ plan.name }} · MealPlanner{% endblock %}
+{% block content %}
+  <h1>Shopping list</h1>
+  <p>{{ plan.name }}, week of {{ plan.week_start }}</p>
+
+  {% if missing_count %}
+    <div class="errors">
+      {{ missing_count }} planned meal(s) use a recipe that was deleted, so they are not included.
+    </div>
+  {% endif %}
+
+  {% if items %}
+    <table>
+      <tr><th>Ingredient</th><th>Quantity</th></tr>
+      {% for item in items %}
+        <tr><td>{{ item.name }}</td><td>{{ '%g' % item.quantity }} {{ item.unit }}</td></tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p>Nothing to buy yet. Add recipes to the plan first.</p>
+  {% endif %}
+
+  <p><a href="{{ url_for('planner.detail_view', plan_id=plan.id) }}">← Back to the plan</a></p>
+{% endblock %}
