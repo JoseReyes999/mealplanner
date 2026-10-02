@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Meal plans · MealPlanner{% endblock %}
+{% block content %}
+  <div class="actions">
+    <h1>Meal plans</h1>
+    <a class="button" href="{{ url_for('planner.create_view') }}">+ New plan</a>
+  </div>
+  {% if plans %}
+    <table>
+      <tr><th>Name</th><th>Week of</th></tr>
+      {% for plan in plans %}
+        <tr>
+          <td><a href="{{ url_for('planner.detail_view', plan_id=plan.id) }}">{{ plan.name }}</a></td>
+          <td>{{ plan.week_start }}</td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p>No meal plans yet.</p>
+  {% endif %}
+{% endblock %}

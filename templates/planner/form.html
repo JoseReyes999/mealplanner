@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}New plan · MealPlanner{% endblock %}
+{% block content %}
+  <h1>New meal plan</h1>
+
+  {% if errors %}
+    <div class="errors">
+      <ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+
+  <form method="post">
+    <label for="name">Name</label>
+    <input id="name" name="name" value="{{ form.get('name', '') }}" placeholder="Week 41" required>
+
+    <label for="week_start">Week starting (Monday)</label>
+    <input id="week_start" name="week_start" type="date" value="{{ form.get('week_start', '') }}" required>
+
+    <button type="submit">Create plan</button>
+  </form>
+{% endblock %}
