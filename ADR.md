@@ -33,3 +33,12 @@ Context: The assignment requires a 70% test coverage on business logic, for the 
 Decision: The tests go in three levels. First, pure functions with no database (validation.py, scaling.py, untis.py, and shopping.py), since they have the main logic and run fastest. Second, the repositories against a real temporary SQLite file created with pytest's tmp_path, so that this way the restrictions mentioned beefore could actually be exercised. Lastly, a few end to end page tests with Flask's test client, and a test in planner that verifies planner only imports service.py from recipes.py.
 Alternatives considered: Mocking the database, rejected because the integrity rules live inside the SQLite, so a mock would pass regardless if the schema is wrong. Testing only through the web pages, rejected because those tests are slower and if one fails it is hard to determine what caused it (logic, SQL, or template).
 Consequences: Suit has 107 tests with about 99% coverage. Which in one case helped me catch a real bug: detail.html contained the list template. What I left thinner is the visual layout of the HTML and the if **name** == "**main**" start line, which are framework glue rather than business logic
+
+## 5. Do not build user log in
+
+Date: 2026-10-02
+Status: Decided
+Context: MealPlanner is used by a shared flat of 4-6 flatmates who trust each other, and it holds no sensitive or personal user data, only recipies and meal plans. Adding accounts would mean adding owners to recipes and plans.
+Decision: I did not build login or user accounts. Everyone who opens the app can see, create and edit a recipe or meal plan.
+Alternatives considered: Buidling login with a users table, password hashing and Flask sessions. Rejected because it adds a third domain of code. It would involve security risks and more testing to be done for a flat where everything is already shared.
+Consequences: The code stays simpler and there is no password to protect, making assignment 2 deplopyment simpler. The cost is that anyone with the link can edit or delete a recipe, so if the app would go public, login should be implemented before.
