@@ -25,6 +25,8 @@ Decision: I split the recipes domain into three tables: recipes, ingredients (na
 Alternatives considered: Storing the ingredients in recipe_ingredients as free text to have fewer tables, but I rejected this because then the case of "flour" and "Flour" would become different ingredients, so the shopping list would not be able to merge them.
 Consequences: The shopping list can group lines by ingredient_id instead of comparing their string names. Additionally the database rejects invalid units or quantities. The cost is that this same units list must also be defined in Python and adding a new unit means rebuilding the table, because sqlite3 cannot alter a CHECK constraint.
 
+Update (2026-10-01): the planner domain added two tables, meal_plans and plan_entries, where plan_entries.recipe_id points to a recipe without a FOREIGN KEY on purpose (a soft reference, see ADR-2), so the two domains share one SQLite file today but could be split into separate databases later; the cost is that the planner must handle deleted recipes itself, which it does by showing "(deleted recipe)" and leaving them out of the shopping list.
+
 ## 4. Test businnes logic directly, against real temporary sqlite3 database
 
 Date: 2026-09-28
