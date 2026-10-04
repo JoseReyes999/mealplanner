@@ -14,7 +14,7 @@ Status: Decided
 Context: The assignment needs to have two separate domains that could later be split into individual microservices. In the case of MealPlanner, the planner needs recipe data (ingredients, servings) to build shopping list.
 Decision: Each domain will be its own package(routes, repository, etc.) and the planner only accesses recipes through recipes/service.py which returns only a plain dict. Which is enforced by the test_planner_only_uses_recipes_service in tests/test_recipes_service.py.
 Alternatives considered: The planner could access the recipe tables directly with a JOIN, which would be simpler (only one query) but this would mean that the planner would be directly tied to the recipes tables, meaning that any schema changes would require modification in the planner as well.
-Consequences: Enables: splitting in the future now only means replacing three functions (list_recipe_choices, recipe_exists, get_recipe_ingredients) with HTTP calls. The planner stores recipe_id as a soft reference with no foreign key, so a deleted recipe shows as '(deleted recipe)' and is skipped in the shopping list.Costs: extra layer of code and no single SQL query across both domains.
+Consequences: Enables: splitting in the future now only means replacing four functions (list_recipe_choices, recipe_exists, get_recipe_ingredients, get_scaled_ingredients) with HTTP calls. The planner stores recipe_id as a soft reference with no foreign key, so a deleted recipe shows as '(deleted recipe)' and is skipped in the shopping list.Costs: extra layer of code and no single SQL query across both domains.
 
 ## 3. Store ingredients in their own table and enforce integrity in SQLite
 
