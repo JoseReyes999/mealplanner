@@ -2,7 +2,6 @@
 import pytest
 
 from planner.units import UNITS, to_base, to_display
-from recipes.validation import UNITS as RECIPE_UNITS
 
 
 @pytest.mark.parametrize("quantity, unit, expected", [
@@ -50,7 +49,7 @@ def test_round_trip_500g_plus_1kg():
     assert to_display("mass", a + b) == (1.5, "kg")
 
 
-def test_units_match_recipes_domain():
-    """The planner keeps its own unit table (it may not import recipes internals in app code),
-    so this test makes sure both lists never drift apart."""
-    assert set(UNITS) == set(RECIPE_UNITS)
+def test_units_match_recipes_contract():
+    """The recipes service only accepts these 7 units (its CHECK constraint and UNITS list).
+    The planner can't import recipes code any more, so the agreed list is pinned here."""
+    assert set(UNITS) == {"g", "kg", "ml", "l", "tsp", "tbsp", "pcs"}

@@ -5,7 +5,6 @@ import pytest
 
 import db
 from planner import repository
-from recipes import repository as recipes_repository
 
 
 @pytest.fixture
@@ -78,16 +77,13 @@ def test_delete_plan_cascades_to_entries(conn):
     assert repository.delete_plan(conn, plan_id) is False
 
 
-def test_deleting_a_recipe_keeps_plan_entries(conn):
-    """recipe_id is a soft reference: deleting the recipe doesn't touch the plan.
-    The planner has to handle the missing recipe itself (via recipes.service)."""
-    recipe_id = recipes_repository.create_recipe(
-        conn, "Pancakes", 4, "Fry.", [{"name": "flour", "quantity": 200, "unit": "g"}]
-    )
+def test_recipe_id_is_a_soft_reference(conn):
+    """recipe_id points to a recipe in ANOTHER service's database, so there is no foreign key:
+    the planner database accepts any id. Checking that the recipe exists is done in code,
+    by asking the recipes service over HTTP before saving."""
     plan_id = repository.create_plan(conn, "W", "2026-10-05")
-    repository.set_entry(conn, plan_id, "mon", "dinner", recipe_id, 2)
-    recipes_repository.delete_recipe(conn, recipe_id)
-    assert len(repository.get_plan(conn, plan_id)["entries"]) == 1
+    repository.set_entry(conn, plan_id, "mon", "dinner", 999, 2)  # no recipe 999 here
+    assert repository.get_plan(conn, plan_id)["entries"][0]["recipe_id"] == 999
 
 
 def test_invalid_day_rejected_by_database(conn):
