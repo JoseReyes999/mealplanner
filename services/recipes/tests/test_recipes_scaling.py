@@ -1,9 +1,6 @@
-"""Tests for recipes/scaling.py and service.get_scaled_ingredients."""
+"""Tests for recipes/scaling.py (pure functions). The HTTP endpoint is tested in test_api.py."""
 import pytest
 
-import db
-from app import create_app
-from recipes import repository, service
 from recipes.scaling import scale_ingredients, scale_quantity
 
 
@@ -28,18 +25,3 @@ def test_scale_ingredients_returns_new_list():
     scaled = scale_ingredients(original, 4, 8)
     assert scaled == [{"name": "flour", "quantity": 400.0, "unit": "g"}]
     assert original[0]["quantity"] == 200.0  # original not modified
-
-
-def test_service_get_scaled_ingredients(tmp_path):
-    app = create_app(str(tmp_path / "test.db"))
-    with app.app_context():
-        recipe_id = repository.create_recipe(
-            db.get_db(), "Pancakes", 4, "Fry.",
-            [{"name": "flour", "quantity": 200, "unit": "g"}, {"name": "egg", "quantity": 2, "unit": "pcs"}],
-        )
-        scaled = service.get_scaled_ingredients(recipe_id, 6)
-        assert [(i["name"], i["quantity"], i["unit"]) for i in scaled] == [
-            ("egg", 3.0, "pcs"),
-            ("flour", 300.0, "g"),
-        ]
-        assert service.get_scaled_ingredients(999, 6) is None
