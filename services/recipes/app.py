@@ -10,6 +10,8 @@ def create_app(db_path=None):
     app = Flask(__name__)
     app.config["DB_PATH"] = db_path or config.DB_PATH
     db.init_app(app)
+    from api import bp as recipes_api
+    app.register_blueprint(recipes_api)
 
     @app.route("/health")
     def health():
