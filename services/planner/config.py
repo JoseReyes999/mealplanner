@@ -16,3 +16,7 @@ RECIPES_URL = os.environ.get("RECIPES_URL", "http://recipes:8000")
 
 # Seconds to wait for the recipes service before giving up (every outbound call needs a timeout).
 RECIPES_TIMEOUT_S = float(os.environ.get("RECIPES_TIMEOUT_S", "2"))
+
+# The only browser origin allowed to call this API (CORS). Locally the UI is served on
+# port 8080; on Azure the pipeline sets this to the Static Web App's URL.
+UI_ORIGIN = os.environ.get("UI_ORIGIN", "http://localhost:8080")

@@ -1,8 +1,24 @@
 """Recipes service entry point. Start with: python app.py"""
-from flask import Flask
+import logging
+import sys
+import time
+
+from flask import Flask, g, request
+from flask_cors import CORS
 
 import config
 import db
+
+log = logging.getLogger("recipes")
+
+
+def _setup_logging():
+    """One plain line per request on stdout, where Docker and Azure collect logs."""
+    if not log.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(message)s"))
+        log.addHandler(handler)
+        log.setLevel(logging.INFO)
 
 
 def create_app(db_path=None):
@@ -12,6 +28,21 @@ def create_app(db_path=None):
     db.init_app(app)
     from api import bp as recipes_api
     app.register_blueprint(recipes_api)
+
+    # Only the UI's origin may call this API from a browser.
+    CORS(app, origins=[config.UI_ORIGIN])
+
+    _setup_logging()
+
+    @app.before_request
+    def start_timer():
+        g.start = time.perf_counter()
+
+    @app.after_request
+    def log_request(response):
+        ms = (time.perf_counter() - g.start) * 1000
+        log.info("%s %s %s %.1fms", request.method, request.path, response.status_code, ms)
+        return response
 
     @app.route("/health")
     def health():
