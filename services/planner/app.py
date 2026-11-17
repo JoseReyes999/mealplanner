@@ -11,6 +11,9 @@ def create_app(db_path=None):
     app.config["DB_PATH"] = db_path or config.DB_PATH
     db.init_app(app)
 
+    from api import bp as planner_api
+    app.register_blueprint(planner_api)
+
     @app.route("/health")
     def health():
         # Basic check for now; it will also test a write to the database in the observability step.
