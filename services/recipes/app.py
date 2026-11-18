@@ -21,10 +21,11 @@ def _setup_logging():
         log.setLevel(logging.INFO)
 
 
-def create_app(db_path=None):
-    """Build the recipes service. Tests pass their own db_path; normal runs use config.DB_PATH."""
+def create_app(database_url=None):
+    """Build the recipes service. Tests pass a test database; normal runs use config.DATABASE_URL."""
+    _setup_logging()  # first, so the migration log lines are printed too
     app = Flask(__name__)
-    app.config["DB_PATH"] = db_path or config.DB_PATH
+    app.config["DATABASE_URL"] = database_url or config.DATABASE_URL
     db.init_app(app)
     from api import bp as recipes_api
     app.register_blueprint(recipes_api)
@@ -32,8 +33,7 @@ def create_app(db_path=None):
     # Only the UI's origin may call this API from a browser.
     CORS(app, origins=[config.UI_ORIGIN])
 
-    _setup_logging()
-
+    
     @app.before_request
     def start_timer():
         g.start = time.perf_counter()
@@ -47,7 +47,7 @@ def create_app(db_path=None):
     @app.route("/health")
     def health():
         # Basic check for now; it will also test a write to the database in the observability step.
-        db.get_db().execute("SELECT 1")
+        db.get_db().execute("SELECT 1 AS ok")
         return {"status": "ok"}
 
     return app

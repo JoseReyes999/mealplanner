@@ -1,4 +1,4 @@
-"""Tests for the recipes JSON API (api.py), with Flask's test client and a temporary database."""
+"""Tests for the recipes JSON API (api.py), with Flask's test client and the SQL Server test database"""
 import pytest
 
 from app import create_app
@@ -12,8 +12,8 @@ PANCAKES = {
 
 
 @pytest.fixture
-def client(tmp_path):
-    return create_app(str(tmp_path / "recipes.db")).test_client()
+def client(database_url):
+    return create_app(database_url).test_client()
 
 
 def create(client, **overrides):

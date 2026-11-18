@@ -1,9 +1,9 @@
-"""Tests for recipes/repository.py against a real temporary SQLite database."""
-import sqlite3
-
+"""Tests for recipes/repository.py against a real SQL Server test database (see conftest.py)."""
+import pymssql
 import pytest
 
 import db
+import migrate
 from recipes import repository
 
 PANCAKES = [
@@ -13,10 +13,9 @@ PANCAKES = [
 
 
 @pytest.fixture
-def conn(tmp_path):
-    path = str(tmp_path / "test.db")
-    db.init_db(path)
-    connection = db.connect(path)
+def conn(database_url):
+    connection = db.connect(database_url)
+    migrate.apply_migrations(connection)
     yield connection
     connection.close()
 
@@ -39,7 +38,7 @@ def test_create_and_get_recipe(conn):
 def test_ingredient_is_reused_ignoring_case(conn):
     make_pancakes(conn)
     repository.create_recipe(conn, "Bread", 2, "Bake.", [{"name": "Flour ", "quantity": 1, "unit": "kg"}])
-    count = conn.execute("SELECT COUNT(*) FROM ingredients WHERE name = 'flour'").fetchone()[0]
+    count = conn.execute("SELECT COUNT(*) AS n FROM ingredients WHERE name = 'flour'").fetchone()["n"]
     assert count == 1
 
 
@@ -74,7 +73,7 @@ def test_delete_cascades_to_lines(conn):
     recipe_id = make_pancakes(conn)
     assert repository.delete_recipe(conn, recipe_id) is True
     assert repository.get_recipe(conn, recipe_id) is None
-    lines = conn.execute("SELECT COUNT(*) FROM recipe_ingredients").fetchone()[0]
+    lines = conn.execute("SELECT COUNT(*) AS n FROM recipe_ingredients").fetchone()["n"]
     assert lines == 0  # ON DELETE CASCADE
 
 
@@ -84,12 +83,12 @@ def test_delete_missing_recipe_returns_false(conn):
 
 def test_cannot_delete_ingredient_in_use(conn):
     make_pancakes(conn)
-    with pytest.raises(sqlite3.IntegrityError):
-        conn.execute("DELETE FROM ingredients WHERE name = 'flour'")  # ON DELETE RESTRICT
+    with pytest.raises(pymssql.IntegrityError, match="REFERENCE constraint"):
+        conn.execute("DELETE FROM ingredients WHERE name = 'flour'")  # ON DELETE NO ACTION
 
 
 def test_failed_create_rolls_back(conn):
     bad_lines = [{"name": "flour", "quantity": 200, "unit": "cup"}]  # violates the CHECK
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(pymssql.IntegrityError, match="CHECK constraint"):
         repository.create_recipe(conn, "Broken", 2, "Nope.", bad_lines)
     assert repository.list_recipes(conn) == []  # the recipe row was rolled back too
