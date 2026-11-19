@@ -1,5 +1,6 @@
-# Local development stack. For now only the database; the two services and the UI
-# are added once they have Dockerfiles.
+# Local development stack: SQL Server and the two services, each with its own database.
+# Start with: docker compose up -d --build   (the UI is added in its own step)
+# Locally both services log in as sa; on Azure each one has its own database user.
 services:
   db:
     image: mcr.microsoft.com/mssql/server:2022-latest
@@ -41,5 +42,42 @@ services:
       ]
     restart: "no"
 
+  recipes:
+    build: ./services/recipes
+    environment:
+      DATABASE_URL: mssql://sa:${MSSQL_SA_PASSWORD}@db:1433/recipes
+      UI_ORIGIN: http://localhost:8080
+    ports:
+      - "8001:8000"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    healthcheck: &health
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)",
+        ]
+      interval: 10s
+      timeout: 6s
+      retries: 3
+      start_period: 20s
+
+  planner:
+    build: ./services/planner
+    environment:
+      DATABASE_URL: mssql://sa:${MSSQL_SA_PASSWORD}@db:1433/planner
+      RECIPES_URL: http://recipes:8000 # the service name works as a host name inside compose
+      UI_ORIGIN: http://localhost:8080
+    ports:
+      - "8002:8000"
+    # Only the database must be ready. The planner does not wait for recipes:
+    # it has to keep working (partially) when recipes is down.
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    healthcheck: *health
 volumes:
   sqldata:

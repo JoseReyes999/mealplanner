@@ -1,0 +1,7 @@
+# Files that never go into the image.
+tests/
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+data/
