@@ -1,17 +1,16 @@
-"""Tests for planner/repository.py against a real temporary SQLite database."""
-import sqlite3
-
+"""Tests for planner/repository.py against a real SQL Server test database (see conftest.py)."""
+import pymssql
 import pytest
 
 import db
+import migrate
 from planner import repository
 
 
 @pytest.fixture
-def conn(tmp_path):
-    path = str(tmp_path / "test.db")
-    db.init_db(path)
-    connection = db.connect(path)
+def conn(database_url):
+    connection = db.connect(database_url)
+    migrate.apply_migrations(connection)
     yield connection
     connection.close()
 
@@ -48,14 +47,15 @@ def test_entries_are_sorted_by_week_order(conn):
 def test_set_entry_replaces_same_slot(conn):
     plan_id = repository.create_plan(conn, "W", "2026-10-05")
     repository.set_entry(conn, plan_id, "mon", "dinner", 1, 2)
+    first_id = repository.get_plan(conn, plan_id)["entries"][0]["id"]
     repository.set_entry(conn, plan_id, "mon", "dinner", 7, 4)  # same slot -> replace
     entries = repository.get_plan(conn, plan_id)["entries"]
     assert len(entries) == 1
-    assert (entries[0]["recipe_id"], entries[0]["servings"]) == (7, 4)
+    assert (entries[0]["id"], entries[0]["recipe_id"], entries[0]["servings"]) == (first_id, 7, 4)
 
 
 def test_set_entry_for_missing_plan_fails(conn):
-    with pytest.raises(sqlite3.IntegrityError):  # FOREIGN KEY to meal_plans
+    with pytest.raises(pymssql.IntegrityError, match="FOREIGN KEY constraint"):  # FOREIGN KEY to meal_plans
         repository.set_entry(conn, 999, "mon", "dinner", 1, 2)
 
 
@@ -73,7 +73,7 @@ def test_delete_plan_cascades_to_entries(conn):
     plan_id = repository.create_plan(conn, "W", "2026-10-05")
     repository.set_entry(conn, plan_id, "mon", "dinner", 1, 2)
     assert repository.delete_plan(conn, plan_id) is True
-    assert conn.execute("SELECT COUNT(*) FROM plan_entries").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) AS n FROM plan_entries").fetchone()["n"] == 0
     assert repository.delete_plan(conn, plan_id) is False
 
 
@@ -88,7 +88,7 @@ def test_recipe_id_is_a_soft_reference(conn):
 
 def test_invalid_day_rejected_by_database(conn):
     plan_id = repository.create_plan(conn, "W", "2026-10-05")
-    with pytest.raises(sqlite3.IntegrityError):  # CHECK constraint on day
+    with pytest.raises(pymssql.IntegrityError, match="CHECK constraint"):  # CHECK constraint on day
         repository.set_entry(conn, plan_id, "monday", "dinner", 1, 2)
 
 

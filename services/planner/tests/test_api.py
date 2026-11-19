@@ -61,8 +61,8 @@ def recipes():
 
 
 @pytest.fixture
-def client(tmp_path, recipes):
-    return create_app(str(tmp_path / "planner.db")).test_client()
+def client(database_url, recipes):
+    return create_app(database_url).test_client()
 
 
 PLAN = {"name": "Week 41", "week_start": "2026-10-05"}
