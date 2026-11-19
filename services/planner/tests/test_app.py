@@ -47,10 +47,26 @@ def test_badly_named_migration_is_rejected(tmp_path):
         migrate.migration_files(str(tmp_path))
 
 
-def test_health_endpoint(database_url):
+def test_health_reads_and_writes_the_database(database_url, monkeypatch):
+    monkeypatch.setattr(config, "VERSION", "3f2a9c1")
     response = create_app(database_url).test_client().get("/health")
     assert response.status_code == 200
-    assert response.get_json() == {"status": "ok"}
+    assert response.get_json() == {"status": "ok", "db": "ok", "version": "3f2a9c1"}
+    assert versions(database_url) == ["001_init.sql"]  # the write test was rolled back
+
+
+def test_health_is_503_when_the_database_is_down(database_url, monkeypatch, caplog):
+    client = create_app(database_url).test_client()
+
+    def database_down():
+        raise pymssql.OperationalError("20009 unable to connect")
+
+    monkeypatch.setattr(db, "get_db", database_down)
+    with caplog.at_level(logging.ERROR, logger="planner"):
+        response = client.get("/health")
+    assert response.status_code == 503
+    assert response.get_json() == {"status": "error", "db": "unavailable", "version": config.VERSION}
+    assert "health check failed" in caplog.text
 
 # ---- request logs and CORS ----
 

@@ -25,3 +25,6 @@ RECIPES_TIMEOUT_S = float(os.environ.get("RECIPES_TIMEOUT_S", "2"))
 # The only browser origin allowed to call this API (CORS). Locally the UI is served on
 # port 8080; on Azure the pipeline sets this to the storage static website's URL.
 UI_ORIGIN = os.environ.get("UI_ORIGIN", "http://localhost:8080")
+
+# Which build is running, shown by /health. The pipeline sets it to the commit SHA.
+VERSION = os.environ.get("APP_VERSION", "dev")

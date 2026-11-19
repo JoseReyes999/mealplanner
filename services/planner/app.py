@@ -3,6 +3,7 @@ import logging
 import sys
 import time
 
+import pymssql
 from flask import Flask, g, request
 from flask_cors import CORS
 
@@ -46,9 +47,20 @@ def create_app(database_url=None):
 
     @app.route("/health")
     def health():
-        # Basic check for now; it will also test a write to the database in the observability step.
-        db.get_db().execute("SELECT 1 AS ok")
-        return {"status": "ok"}
+        """200 if this service can read and write its own database, 503 if it can't.
+
+        The pipeline polls this after every deploy; `version` says which commit is running.
+        """
+        try:
+            conn = db.get_db()
+            conn.execute("SELECT COUNT(*) AS n FROM schema_migrations").fetchone()  # read
+            # Write: insert a row and roll it back, so the check proves we can write but keeps nothing.
+            conn.execute("INSERT INTO schema_migrations (version) VALUES (%s)", ("health-check",))
+            conn.rollback()
+        except (pymssql.Error, RuntimeError) as exc:
+            log.error("health check failed: %s", exc)
+            return {"status": "error", "db": "unavailable", "version": config.VERSION}, 503
+        return {"status": "ok", "db": "ok", "version": config.VERSION}
 
     return app
 
