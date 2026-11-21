@@ -1,5 +1,5 @@
-# Local development stack: SQL Server and the two services, each with its own database.
-# Start with: docker compose up -d --build   (the UI is added in its own step)
+# Local development stack: SQL Server, the two services (each with its own database) and the UI.
+# Start with: docker compose up -d --build, then open http://localhost:8080
 # Locally both services log in as sa; on Azure each one has its own database user.
 services:
   db:
@@ -79,5 +79,14 @@ services:
       db-init:
         condition: service_completed_successfully
     healthcheck: *health
+
+    # The static UI, served as plain files like the storage static website on Azure.
+  # Port 8080 is the UI_ORIGIN both services allow for CORS.
+  ui:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./ui:/usr/share/nginx/html:ro
+    ports:
+      - "8080:80"
 volumes:
   sqldata:
