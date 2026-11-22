@@ -1,0 +1,276 @@
+openapi: 3.0.3
+info:
+  title: Planner service
+  version: 1.0.0
+  description: >
+    Weekly meal plans. Recipe names and ingredients come from the recipes service
+    (GET /recipes, GET /recipes/{recipe_id}, GET /recipes/{recipe_id}/scaled). When it is
+    down, plans are still served without recipe names, adding an entry returns 503 and saves
+    nothing, and the shopping list returns 503.
+
+paths:
+  /health:
+    get:
+      summary: Whether this service can read and write its own database
+      description: Reflects only the planner's own state, not whether recipes is up.
+      responses:
+        "200":
+          description: Database reachable (read and write).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+              example: { status: ok, db: ok, version: 3f2a9c1 }
+        "503":
+          description: The database can't be used.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+              example: { status: error, db: unavailable, version: 3f2a9c1 }
+
+  /plans:
+    get:
+      summary: All plans, most recent week first
+      responses:
+        "200":
+          description: The plans.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PlanSummary" }
+    post:
+      summary: Create a weekly plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlanInput" }
+      responses:
+        "201":
+          description: Created (no entries yet).
+          headers:
+            Location:
+              description: Path of the new plan, e.g. /plans/1
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Plan" }
+        "400":
+          $ref: "#/components/responses/ValidationErrors"
+
+  /plans/{plan_id}:
+    parameters:
+      - $ref: "#/components/parameters/PlanId"
+    get:
+      summary: One plan with its entries and their recipe names
+      description: >
+        Crosses the seam (GET /recipes on the recipes service). If recipes is down the plan
+        is still returned, with recipe_name null, recipes_available false and a notice.
+      responses:
+        "200":
+          description: The plan.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Plan" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      summary: Delete a plan and its entries
+      responses:
+        "204":
+          description: Deleted.
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /plans/{plan_id}/entries:
+    parameters:
+      - $ref: "#/components/parameters/PlanId"
+    post:
+      summary: Put a recipe in a meal slot, replacing the one already there
+      description: Crosses the seam (GET /recipes/{recipe_id}) to check that the recipe exists.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EntryInput" }
+      responses:
+        "200":
+          description: The updated plan.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Plan" }
+        "400":
+          $ref: "#/components/responses/ValidationErrors"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          description: The recipes service is unavailable, so the recipe can't be checked; nothing is saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /plans/{plan_id}/entries/{entry_id}:
+    parameters:
+      - $ref: "#/components/parameters/PlanId"
+      - name: entry_id
+        in: path
+        required: true
+        schema: { type: integer }
+    delete:
+      summary: Remove one entry from a plan
+      responses:
+        "204":
+          description: Removed.
+        "404":
+          description: No such entry in that plan.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /plans/{plan_id}/shopping-list:
+    parameters:
+      - $ref: "#/components/parameters/PlanId"
+    get:
+      summary: Everything to buy for the plan, merged across meals
+      description: >
+        The cross-seam flow: for each planned meal the planner asks recipes for its scaled
+        ingredients (GET /recipes/{recipe_id}/scaled), then merges lines by ingredient and unit family.
+      responses:
+        "200":
+          description: The shopping list.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShoppingList" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          description: The recipes service is unavailable.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, plan_id]
+                properties:
+                  error: { type: string }
+                  plan_id: { type: integer }
+
+components:
+  parameters:
+    PlanId:
+      name: plan_id
+      in: path
+      required: true
+      schema: { type: integer }
+
+  responses:
+    NotFound:
+      description: No plan with that id.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: plan 9 not found }
+    ValidationErrors:
+      description: Invalid input; every problem is listed.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Errors" }
+          example: { errors: ["The week must start on a Monday."] }
+
+  schemas:
+    Health:
+      type: object
+      required: [status, db, version]
+      properties:
+        status: { type: string, enum: [ok, error] }
+        db: { type: string, enum: [ok, unavailable] }
+        version: { type: string, description: "Commit SHA of the running build, or dev when run locally." }
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+    Errors:
+      type: object
+      required: [errors]
+      properties:
+        errors:
+          type: array
+          items: { type: string }
+
+    Day:
+      type: string
+      enum: [mon, tue, wed, thu, fri, sat, sun]
+
+    MealSlot:
+      type: string
+      enum: [breakfast, lunch, dinner]
+
+    PlanSummary:
+      type: object
+      required: [id, name, week_start]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        week_start: { type: string, format: date }
+
+    PlanInput:
+      type: object
+      required: [name, week_start]
+      properties:
+        name: { type: string, example: Week 48 }
+        week_start: { type: string, format: date, description: Must be a Monday., example: "2026-11-23" }
+
+    Entry:
+      type: object
+      required: [id, day, meal_slot, recipe_id, servings]
+      properties:
+        id: { type: integer }
+        day: { $ref: "#/components/schemas/Day" }
+        meal_slot: { $ref: "#/components/schemas/MealSlot" }
+        recipe_id: { type: integer, description: Id of a recipe in the recipes service (soft reference). }
+        servings: { type: integer, minimum: 1 }
+        recipe_name:
+          type: string
+          nullable: true
+          description: From the recipes service; "(deleted recipe)" if it no longer exists, null if recipes is down.
+
+    Plan:
+      type: object
+      required: [id, name, week_start, created_at, entries]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        week_start: { type: string, format: date }
+        created_at: { type: string, example: "2026-11-19 16:14:37" }
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/Entry" }
+        recipes_available: { type: boolean, description: False when the recipes service could not be reached. }
+        notice: { type: string, description: Only present when recipes_available is false. }
+
+    EntryInput:
+      type: object
+      required: [day, meal_slot, recipe_id, servings]
+      properties:
+        day: { $ref: "#/components/schemas/Day" }
+        meal_slot: { $ref: "#/components/schemas/MealSlot" }
+        recipe_id: { type: integer, example: 1 }
+        servings: { type: integer, minimum: 1, example: 6 }
+
+    ShoppingList:
+      type: object
+      required: [plan_id, items, missing_recipes]
+      properties:
+        plan_id: { type: integer }
+        items:
+          type: array
+          items:
+            type: object
+            required: [name, quantity, unit]
+            properties:
+              name: { type: string }
+              quantity: { type: number }
+              unit: { type: string }
+        missing_recipes: { type: integer, description: Planned meals whose recipe was deleted. }

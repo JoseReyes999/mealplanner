@@ -18,6 +18,6 @@ USER appuser
 
 EXPOSE 8000
 
-# gunicorn instead of Flask's development server. One worker (migrations run at startup,
-# so only one process may start the app) with 4 threads for concurrent requests.
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "1", "--threads", "4", "app:create_app()"]
+# gunicorn instead of Flask's development server, on $PORT (8000 if not set). One worker
+# (migrations run at startup, so only one process may start the app) with 4 threads.
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-8000} --workers 1 --threads 4 'app:create_app()'"]
