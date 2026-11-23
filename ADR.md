@@ -44,3 +44,37 @@ Context: MealPlanner is used by a shared flat of 4-6 flatmates who trust each ot
 Decision: I did not build login or user accounts. Everyone who opens the app can see, create and edit a recipe or meal plan.
 Alternatives considered: Buidling login with a users table, password hashing and Flask sessions. Rejected because it adds a third domain of code. It would involve security risks and more testing to be done for a flat where everything is already shared.
 Consequences: The code stays simpler and there is no password to protect, making assignment 2 deplopyment simpler. The cost is that anyone with the link can edit or delete a recipe, so if the app would go public, login should be implemented before.
+
+## 6. The split: two services along the ADR-2
+
+Date: 2026-11-23
+Status: Decided
+Context: Assignment 2 specifies that we need two independent deployable services were each contain their own database. In assignment 1, we made it clear that communication between planner and recipes was strictly through 4 functions in recipe/service.py and plan_entries.recipe_id.
+Decision: The separation from ADR-2 persists, `recipes` owns reciped and ingredients, while `planner` owns plans and entries. The service functions used before became HTTP endpoints. So now in order to cross this separation is 3 GET calls: `GET /recipes` (recipes in plan grid), `GET /recipes/{id}` (recipe exists), and `GET /recipes/{id}/scaled?servings=N` (scaled version of the ingredients for each planned meal). `recipes_client.py` kept the same function names so that `shopping.py` did not need any change, `get_recipe_ingredients` function was deleted because shopping list only needs the scaled version. The planner finds recipes through environment variable `RECIPES_URL` (http://recipes:8000 in compose, the Container App URL on Azure). Every call has a 2 s timeout. The Flask templates were replaced by JSON APIs and a static UI (ui/), this decision was made because the UI runs on a storage static website that calls both services from the services, making ADR-1 superseded.
+Alternatives considered: One of the alternatives considered was to move the shopping list into recipes: rejected because recipes would then need plan data, which would just flip the dependency. One other alternatice is to keep a copy or cache of the recipe names: this has not been built being a good candidate for ADR-10.
+Consequences: Thanks to these decisions, each service can be deployed, scaled and fails on their own, and recipes going down no longer breaks the plan page. One of its cost is that the shopping list makes one HTTP call per planned meal, up to 21 for a full week, so it’s slower than one SQL query and depends on recipes being up.Another cost is two contracts to keep in sync. The openapi.yaml files plus the tests that compare them with the routes cover that. the cross-seam integration test replaces recipes with a stub that answers the same HTTP endpoints (details in ADR-9).
+
+## 7. Data and migrations: one SQL Server database per service, versioned migrations
+
+Date: 2026-11-23
+Status: Decided
+Context: Before I only had one SQL file all 5 tables, and the schema createde on every boot the tables with the condition CREATE TABLE IF NOT EXISTS. Now each service needs its own database and login. Once the database holds the data, the schema has to change without losing it. IF NOT EXISTS cannot alter an existing table.
+Decision: One database per service, SQL Server runs as a container locally and as Azure SQL serverless on Azure. Each service logs in with its own contained user (recipes_app, planner_app), which has access only to their own database. I tested this by trying to access planner db through recipes container. Each service starts with 001_init.sql because the data from Assignment 1 was only test data, this was done in SQL Server syntax:
+INTEGER PRIMARY KEY → INT IDENTITY
+TEXT → NVARCHAR, and week_start became a real DATE
+COLLATE NOCASE → a case-insensitive collation
+RESTRICT → NO ACTION
+ON CONFLICT upsert → MERGE
+lastrowid → OUTPUT INSERTED.id
+The versioned migrations (migrate.py):
+files named NNN_description.sql, applied in order at startup
+each file recorded in schema_migrations, so a second start applies nothing
+each file runs in one transaction, so a broken file leaves nothing half-applied (there’s a test for that)
+safe at startup because there’s max 1 replica
+Now there is no foreign key `plan_entries.recipe_id` to recipes because they exist in different databases and a deletion cannot cascade into plans. This is compensated by the following:
+1.before saving an entry, the planner asks recipes whether the recipe exists (and if recipes is down: 503, nothing saved)
+2.a deleted recipe shows as “(deleted recipe)” in the plan
+3.deleted recipes are left out of the shopping list and counted in missing_recipes
+Integrity is mantained through each entry (CHECK, unique ingredient name, cascade from recipe to its lines and plan to its entries).
+Alternatives considered: One of the alternatives considered was to keep SQLite inside the container. This was rejected because the container is replaced on every deploy and scales to zero, so the file would be lost.
+Consequences: Its costs is that now need SQL Server (Docker locally, and a service container in CI). The startup is slower beacuase of conections and migration checks. No SQL query can join across the two domains. In the other hand the gain is that schema changes are reviewed, versioned files that apply the same way locally, in CI and on Azure.
