@@ -47,5 +47,5 @@ def test_collect_lines_uses_service_and_reports_missing():
 
     entries = [{"recipe_id": 1, "servings": 2}, {"recipe_id": 99, "servings": 4}, {"recipe_id": 1, "servings": 3}]
     lines, missing = collect_lines(entries, fake_get_scaled)
-    assert [l["quantity"] for l in lines] == [200, 300]
+    assert [item["quantity"] for item in lines] == [200, 300]
     assert missing == [{"recipe_id": 99, "servings": 4}]

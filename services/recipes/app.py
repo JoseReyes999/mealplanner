@@ -34,7 +34,7 @@ def create_app(database_url=None):
     # Only the UI's origin may call this API from a browser.
     CORS(app, origins=[config.UI_ORIGIN])
 
-    
+
     @app.before_request
     def start_timer():
         g.start = time.perf_counter()

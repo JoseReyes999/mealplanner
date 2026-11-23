@@ -1,8 +1,12 @@
 """Versioned migrations: files in migrations/ named NNN_description.sql, applied in order, once each.
 
-Every applied file is recorded in the schema_migrations table, so a new deploy only runs the files it hasn't seen. Each file runs in one transaction: if a statement fails, nothing of that file is kept and it will be tried again on the next start. A file may hold several batches separated by a line with only GO, as in sqlcmd.
+Every applied file is recorded in the schema_migrations table, so a new deploy only runs
+the files it hasn't seen. Each file runs in one transaction: if a statement fails, nothing
+of that file is kept and it will be tried again on the next start. A file may hold several
+batches separated by a line with only GO, as in sqlcmd.
 
-Migrations run when the service starts. That is safe because the Container App runs at most one replica, so two copies never migrate at the same time.
+Migrations run when the service starts. That is safe because the Container App runs at most
+one replica, so two copies never migrate at the same time.
 """
 import os
 import re

@@ -1,0 +1,3 @@
+# Coverage measures the service code, not the tests themselves.
+[run]
+omit = tests/*
