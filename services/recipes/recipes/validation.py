@@ -54,6 +54,17 @@ def parse_recipe_form(form):
     except ValueError:
         errors.append("Servings must be a whole number.")
 
+    # Optional (added by migration 002): blank means 0.
+    prep_minutes = 0
+    raw_prep = form.get("prep_minutes", "").strip()
+    if raw_prep:
+        try:
+            prep_minutes = int(raw_prep)
+            if prep_minutes < 0:
+                errors.append("Preparation time can't be negative.")
+        except ValueError:
+            errors.append("Preparation time must be a whole number of minutes.")
+
     instructions = form.get("instructions", "").strip()
     if not instructions:
         errors.append("Instructions are required.")
@@ -79,6 +90,7 @@ def parse_recipe_form(form):
     data = {
         "name": name,
         "base_servings": base_servings,
+        "prep_minutes": prep_minutes,
         "instructions": instructions,
         "ingredients": ingredients,
     }

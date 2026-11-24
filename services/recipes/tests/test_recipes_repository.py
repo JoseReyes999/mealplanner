@@ -47,6 +47,15 @@ def test_list_recipes_is_alphabetical(conn):
     make_pancakes(conn)
     assert [r["name"] for r in repository.list_recipes(conn)] == ["Pancakes", "Tortilla"]
 
+def test_prep_minutes_defaults_to_0_and_can_be_set(conn):
+    pancakes = make_pancakes(conn)
+    bread = repository.create_recipe(conn, "Bread", 2, "Bake.", [{"name": "flour", "quantity": 1, "unit": "kg"}],
+                                     prep_minutes=90)
+    assert repository.get_recipe(conn, pancakes)["prep_minutes"] == 0
+    assert repository.get_recipe(conn, bread)["prep_minutes"] == 90
+    repository.update_recipe(conn, bread, "Bread", 2, "Bake.", [{"name": "flour", "quantity": 1, "unit": "kg"}],
+                             prep_minutes=60)
+    assert [r["prep_minutes"] for r in repository.list_recipes(conn)] == [60, 0]
 
 def test_get_missing_recipe_returns_none(conn):
     assert repository.get_recipe(conn, 999) is None
