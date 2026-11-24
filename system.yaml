@@ -1,0 +1,62 @@
+# yaml-language-server: $schema=./system.schema.json
+# What the system is made of, how each service is configured, what crosses the seam,
+# and where everything runs on Azure. Validated against system.schema.json in CI.
+student: jmreyes.ieu2024
+prefix: jmreyes-ieu2024
+public_url: https://jmreyesieu2024ui.z28.web.core.windows.net
+
+ui:
+  path: ui
+  storage_account: jmreyesieu2024ui
+  calls: [recipes, planner]
+
+azure:
+  resource_group: rg-jmreyes-ieu2024
+  container_apps_environment: jmreyes-ieu2024-env
+  sql_server: jmreyes-ieu2024-sql
+  registry: ghcr.io/josereyes999
+
+services:
+  recipes:
+    description: Recipes and their ingredients; scales a recipe to any number of servings.
+    path: services/recipes
+    openapi: services/recipes/openapi.yaml
+    port_default: 8000
+    health: /health
+    migrations: services/recipes/migrations
+    env: &common_env
+      PORT: { default: 8000, description: Port the service listens on }
+      DATABASE_URL: { secret: true, description: "Connection string of this service's own database, mssql://user:password@host:1433/database" }
+      UI_ORIGIN: { default: "http://localhost:8080", description: The only browser origin allowed by CORS (the UI's address) }
+      APP_VERSION: { default: dev, description: Build shown by /health; the pipeline sets it to the commit SHA }
+      DB_CONNECT_ATTEMPTS: { default: 8, description: Connection attempts while the database resumes from pause }
+      DB_RETRY_MAX_WAIT_S: { default: 15, description: "Longest wait between connection attempts (backoff 1, 2, 4, 8, 15 s)" }
+      DB_LOGIN_TIMEOUT_S: { default: 15, description: Timeout for one connection attempt }
+      DB_QUERY_TIMEOUT_S: { default: 30, description: Timeout for one SQL query }
+    azure:
+      container_app: jmreyes-ieu2024-recipes
+      sql_database: jmreyes-ieu2024-recipes-db
+
+  planner:
+    description: Weekly meal plans and the shopping list; gets recipe names and ingredients from recipes.
+    path: services/planner
+    openapi: services/planner/openapi.yaml
+    port_default: 8000
+    health: /health
+    migrations: services/planner/migrations
+    env:
+      <<: *common_env
+      RECIPES_URL: { default: "http://recipes:8000", description: Base URL of the recipes service }
+      RECIPES_TIMEOUT_S: { default: 2, description: Timeout in seconds for every call to recipes }
+    calls:
+      - service: recipes
+        url_env: RECIPES_URL
+        endpoints: ["GET /recipes", "GET /recipes/{recipe_id}", "GET /recipes/{recipe_id}/scaled"]
+        timeout_s: 2
+        on_failure: >-
+          Plans are still shown, without recipe names and with a "recipes service is unavailable"
+          notice. Adding a recipe to a meal returns 503 and saves nothing. The shopping list
+          returns 503 with a clear message and a Try again button in the UI.
+    azure:
+      container_app: jmreyes-ieu2024-planner
+      sql_database: jmreyes-ieu2024-planner-db

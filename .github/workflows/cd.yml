@@ -1,0 +1,137 @@
+# CD: runs only on pushes to main (which arrive through pull requests).
+# 1. Runs the whole CI workflow on this commit; nothing below runs unless it passes.
+# 2. Pushes both images to GHCR, tagged with the commit SHA.
+# 3. Signs in to Azure as the managed identity (OIDC, no password) and deploys those images,
+#    then uploads the UI with config.js pointing at the services.
+# 4. Polls /health on both services and fails the run if they don't answer 200 with this SHA.
+name: CD
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Never run two deploys at the same time; a newer push waits for the current one.
+concurrency:
+  group: cd-main
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Push the ${{ matrix.service }} image to GHCR
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service: [recipes, planner]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Registry namespace (GHCR names must be lowercase)
+        run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/${{ matrix.service }}
+          push: true
+          provenance: false
+          tags: ghcr.io/${{ env.OWNER }}/mealplanner-${{ matrix.service }}:${{ github.sha }}
+
+  deploy:
+    name: Deploy to Azure
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # lets azure/login get an OIDC token for the managed identity
+    env:
+      PREFIX: ${{ vars.PREFIX }}
+      RG: ${{ vars.RESOURCE_GROUP }}
+      UI_STORAGE: ${{ vars.UI_STORAGE }}
+      SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Look up addresses
+        run: |
+          echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+          UI_ORIGIN="$(az storage account show -n "$UI_STORAGE" -g "$RG" --query primaryEndpoints.web -o tsv | sed 's:/*$::')"
+          RECIPES_URL="https://$(az containerapp show -n "$PREFIX-recipes" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)"
+          PLANNER_URL="https://$(az containerapp show -n "$PREFIX-planner" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)"
+          {
+            echo "UI_ORIGIN=$UI_ORIGIN"
+            echo "RECIPES_URL=$RECIPES_URL"
+            echo "PLANNER_URL=$PLANNER_URL"
+          } >> "$GITHUB_ENV"
+          echo "UI: $UI_ORIGIN | recipes: $RECIPES_URL | planner: $PLANNER_URL"
+
+      - name: Deploy recipes
+        env:
+          DB_PASSWORD: ${{ secrets.RECIPES_DB_PASSWORD }}
+        run: |
+          az containerapp secret set -n "$PREFIX-recipes" -g "$RG" -o none --secrets \
+            "db-url=mssql://recipes_app:${DB_PASSWORD}@${PREFIX}-sql.database.windows.net:1433/${PREFIX}-recipes-db?encrypt=require"
+          az containerapp update -n "$PREFIX-recipes" -g "$RG" -o none \
+            --image "ghcr.io/$OWNER/mealplanner-recipes:$SHA" \
+            --min-replicas 0 --max-replicas 1 \
+            --set-env-vars "DATABASE_URL=secretref:db-url" "UI_ORIGIN=$UI_ORIGIN" "APP_VERSION=$SHA"
+
+      - name: Deploy planner
+        env:
+          DB_PASSWORD: ${{ secrets.PLANNER_DB_PASSWORD }}
+        run: |
+          az containerapp secret set -n "$PREFIX-planner" -g "$RG" -o none --secrets \
+            "db-url=mssql://planner_app:${DB_PASSWORD}@${PREFIX}-sql.database.windows.net:1433/${PREFIX}-planner-db?encrypt=require"
+          az containerapp update -n "$PREFIX-planner" -g "$RG" -o none \
+            --image "ghcr.io/$OWNER/mealplanner-planner:$SHA" \
+            --min-replicas 0 --max-replicas 1 \
+            --set-env-vars "DATABASE_URL=secretref:db-url" "UI_ORIGIN=$UI_ORIGIN" \
+                           "RECIPES_URL=$RECIPES_URL" "APP_VERSION=$SHA"
+
+      - name: Deploy the UI with the services' addresses
+        run: |
+          cat > ui/config.js <<CONFIG
+          // Written by the CD pipeline for commit $SHA.
+          window.MEALPLANNER_CONFIG = {
+            RECIPES_API: "$RECIPES_URL",
+            PLANNER_API: "$PLANNER_URL",
+          };
+          CONFIG
+          az storage blob upload-batch --account-name "$UI_STORAGE" --auth-mode key \
+            --destination '$web' --source ui --overwrite -o none
+
+      - name: Health check (both services must answer 200 with this commit's SHA)
+        run: |
+          # Scale-to-zero: the first request starts the container and may find the database
+          # paused, which takes about a minute to resume. Try for up to ~10 minutes.
+          for svc in "$RECIPES_URL" "$PLANNER_URL"; do
+            for attempt in $(seq 1 30); do
+              body="$(curl -sS --max-time 30 "$svc/health" || true)"
+              echo "$svc attempt $attempt: $body"
+              if echo "$body" | grep -q "\"status\": *\"ok\"" && echo "$body" | grep -q "$SHA"; then
+                continue 2
+              fi
+              sleep 10
+            done
+            echo "::error::$svc/health did not return ok with version $SHA"
+            exit 1
+          done
+          echo "Live: $UI_ORIGIN"

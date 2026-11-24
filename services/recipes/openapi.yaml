@@ -1,0 +1,229 @@
+openapi: 3.0.3
+info:
+  title: Recipes service
+  version: 1.0.0
+  description: >
+    Recipes and their ingredients. The UI uses every endpoint; the planner service calls
+    GET /recipes, GET /recipes/{recipe_id} and GET /recipes/{recipe_id}/scaled.
+
+paths:
+  /health:
+    get:
+      summary: Whether this service can read and write its own database
+      responses:
+        "200":
+          description: Database reachable (read and write).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+              example: { status: ok, db: ok, version: 3f2a9c1 }
+        "503":
+          description: The database can't be used.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+              example: { status: error, db: unavailable, version: 3f2a9c1 }
+
+  /recipes:
+    get:
+      summary: All recipes, alphabetically, without their ingredients
+      description: Called by the planner to name the recipes in a plan.
+      responses:
+        "200":
+          description: The recipes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RecipeSummary" }
+    post:
+      summary: Create a recipe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecipeInput" }
+      responses:
+        "201":
+          description: Created.
+          headers:
+            Location:
+              description: Path of the new recipe, e.g. /recipes/1
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Recipe" }
+        "400":
+          $ref: "#/components/responses/ValidationErrors"
+
+  /recipes/{recipe_id}:
+    parameters:
+      - $ref: "#/components/parameters/RecipeId"
+    get:
+      summary: One recipe with its ingredient lines
+      description: Called by the planner to check that a recipe exists (404 if not).
+      responses:
+        "200":
+          description: The recipe.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Recipe" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      summary: Replace a recipe's fields and all its ingredient lines
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecipeInput" }
+      responses:
+        "200":
+          description: The updated recipe.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Recipe" }
+        "400":
+          $ref: "#/components/responses/ValidationErrors"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      summary: Delete a recipe and its ingredient lines
+      description: Plans in the planner service may still point to it (soft reference).
+      responses:
+        "204":
+          description: Deleted.
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /recipes/{recipe_id}/scaled:
+    parameters:
+      - $ref: "#/components/parameters/RecipeId"
+    get:
+      summary: The recipe's ingredients scaled to a number of servings
+      description: Called by the planner for each planned meal when it builds the shopping list.
+      parameters:
+        - name: servings
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: The scaled ingredient lines.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScaledRecipe" }
+        "400":
+          description: servings missing or not a whole number greater than 0.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  parameters:
+    RecipeId:
+      name: recipe_id
+      in: path
+      required: true
+      schema: { type: integer }
+
+  responses:
+    NotFound:
+      description: No recipe with that id.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: recipe 9 not found }
+    ValidationErrors:
+      description: Invalid input; every problem is listed.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Errors" }
+          example: { errors: ["'2 cup milk': unknown unit 'cup' (use one of: g, kg, ml, l, tsp, tbsp, pcs)"] }
+
+  schemas:
+    Health:
+      type: object
+      required: [status, db, version]
+      properties:
+        status: { type: string, enum: [ok, error] }
+        db: { type: string, enum: [ok, unavailable] }
+        version: { type: string, description: "Commit SHA of the running build, or dev when run locally." }
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+    Errors:
+      type: object
+      required: [errors]
+      properties:
+        errors:
+          type: array
+          items: { type: string }
+
+    Unit:
+      type: string
+      enum: [g, kg, ml, l, tsp, tbsp, pcs]
+
+    Ingredient:
+      type: object
+      required: [ingredient_id, name, quantity, unit]
+      properties:
+        ingredient_id: { type: integer, description: The planner merges shopping-list lines by this id. }
+        name: { type: string }
+        quantity: { type: number }
+        unit: { $ref: "#/components/schemas/Unit" }
+
+    RecipeSummary:
+      type: object
+      required: [id, name, base_servings, created_at]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        base_servings: { type: integer, minimum: 1 }
+        created_at: { type: string, example: "2026-11-19 16:14:37" }
+
+    Recipe:
+      type: object
+      required: [id, name, base_servings, instructions, created_at, ingredients]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        base_servings: { type: integer, minimum: 1 }
+        instructions: { type: string }
+        created_at: { type: string, example: "2026-11-19 16:14:37" }
+        ingredients:
+          type: array
+          items: { $ref: "#/components/schemas/Ingredient" }
+
+    RecipeInput:
+      type: object
+      required: [name, base_servings, instructions, ingredients]
+      properties:
+        name: { type: string, example: Pancakes }
+        base_servings: { type: integer, minimum: 1, example: 4 }
+        instructions: { type: string, example: Mix and fry. }
+        ingredients:
+          description: One line per ingredient, "quantity unit name", as one text block or a list.
+          oneOf:
+            - type: string
+              example: "200 g flour\n2 pcs egg"
+            - type: array
+              items: { type: string }
+              example: ["200 g flour", "2 pcs egg"]
+
+    ScaledRecipe:
+      type: object
+      required: [recipe_id, name, servings, ingredients]
+      properties:
+        recipe_id: { type: integer }
+        name: { type: string }
+        servings: { type: integer, minimum: 1 }
+        ingredients:
+          type: array
+          items: { $ref: "#/components/schemas/Ingredient" }

@@ -1,0 +1,16 @@
+/* Same look as the Assignment 1 templates. */
+body { font-family: system-ui, sans-serif; max-width: 760px; margin: 0 auto; padding: 16px; color: #222; }
+nav { display: flex; gap: 16px; padding-bottom: 12px; border-bottom: 1px solid #ddd; margin-bottom: 20px; }
+nav a { text-decoration: none; font-weight: 600; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; }
+label { display: block; font-weight: 600; margin-top: 12px; }
+input, textarea, select { width: 100%; box-sizing: border-box; padding: 6px; font: inherit; }
+button, .button { margin-top: 12px; padding: 6px 14px; font: inherit; cursor: pointer; }
+.errors { background: #fdecea; border: 1px solid #f5c2c0; padding: 8px 12px; margin: 12px 0; }
+.notice { background: #fff8e1; border: 1px solid #f3d27a; padding: 8px 12px; margin: 12px 0; }
+#status { background: #e8f0fe; border: 1px solid #b6ccf5; padding: 8px 12px; margin-bottom: 16px; }
+.hint { color: #666; font-size: 0.9em; }
+.actions { display: flex; gap: 12px; align-items: center; }
+.pre { white-space: pre-line; }
+button.small { margin: 0 0 0 4px; padding: 0 6px; }

@@ -1,0 +1,8 @@
+# Linter settings for both services (CI runs: ruff check services/<name>).
+line-length = 120
+target-version = "py312"
+
+[lint]
+# pycodestyle errors and warnings (E, W) and pyflakes (F): style problems and real bugs
+# such as unused imports or undefined names.
+select = ["E", "F", "W"]

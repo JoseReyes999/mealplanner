@@ -1,0 +1,92 @@
+# Local development stack: SQL Server, the two services (each with its own database) and the UI.
+# Start with: docker compose up -d --build, then open http://localhost:8080
+# Locally both services log in as sa; on Azure each one has its own database user.
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64 # the image is x86 only; Docker Desktop emulates it on Apple Silicon
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env}
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqldata:/var/opt/mssql # data survives docker compose down
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -Q "SELECT 1" -b -o /dev/null',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  # Runs db/init.sql once the database is healthy, then exits.
+  db-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env}
+    volumes:
+      - ./db/init.sql:/init.sql:ro
+    entrypoint:
+      [
+        "/bin/bash",
+        "-c",
+        '/opt/mssql-tools18/bin/sqlcmd -S db -U sa -P "$$MSSQL_SA_PASSWORD" -C -b -i /init.sql',
+      ]
+    restart: "no"
+
+  recipes:
+    build: ./services/recipes
+    environment:
+      DATABASE_URL: mssql://sa:${MSSQL_SA_PASSWORD}@db:1433/recipes
+      UI_ORIGIN: http://localhost:8080
+    ports:
+      - "8001:8000"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    healthcheck: &health
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)",
+        ]
+      interval: 10s
+      timeout: 6s
+      retries: 3
+      start_period: 20s
+
+  planner:
+    build: ./services/planner
+    environment:
+      DATABASE_URL: mssql://sa:${MSSQL_SA_PASSWORD}@db:1433/planner
+      RECIPES_URL: http://recipes:8000 # the service name works as a host name inside compose
+      UI_ORIGIN: http://localhost:8080
+    ports:
+      - "8002:8000"
+    # Only the database must be ready. The planner does not wait for recipes:
+    # it has to keep working (partially) when recipes is down.
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    healthcheck: *health
+
+    # The static UI, served as plain files like the storage static website on Azure.
+  # Port 8080 is the UI_ORIGIN both services allow for CORS.
+  ui:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./ui:/usr/share/nginx/html:ro
+    ports:
+      - "8080:80"
+volumes:
+  sqldata:
