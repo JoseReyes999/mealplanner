@@ -1,6 +1,9 @@
 """Smoke tests: the recipes service starts, migrates its database, logs and answers CORS."""
 import logging
 
+import os
+import shutil
+
 import pymssql
 import pytest
 
@@ -23,8 +26,9 @@ def test_startup_applies_migrations_once(database_url, caplog):
     with caplog.at_level(logging.INFO, logger="recipes"):
         create_app(database_url)
         create_app(database_url)  # a second start (a new deploy) finds nothing new to apply
-    assert versions(database_url) == ["001_init.sql"]
-    assert [r.getMessage() for r in caplog.records] == ["applied migration 001_init.sql"]
+    assert versions(database_url) == ["001_init.sql", "002_add_prep_minutes.sql"]
+    assert [r.getMessage() for r in caplog.records] == [
+        "applied migration 001_init.sql", "applied migration 002_add_prep_minutes.sql"]
 
 
 def test_failed_migration_keeps_nothing_of_that_file(database_url, tmp_path):
@@ -40,6 +44,19 @@ def test_failed_migration_keeps_nothing_of_that_file(database_url, tmp_path):
     assert versions(database_url) == ["001_first.sql"]
     assert tables == {"schema_migrations", "a"}  # table b was rolled back with its file
 
+def test_migration_002_keeps_existing_recipes(database_url, tmp_path):
+    """What happens on Azure: a database at 001 already holds data, then 002 is deployed."""
+    shutil.copy(os.path.join(migrate.MIGRATIONS_DIR, "001_init.sql"), tmp_path)
+    conn = db.connect(database_url)
+    try:
+        migrate.apply_migrations(conn, str(tmp_path))  # the database as it was before 002
+        with conn:
+            conn.execute("INSERT INTO recipes (name, base_servings, instructions) VALUES ('Bread', 2, 'Bake.')")
+        assert migrate.apply_migrations(conn) == ["002_add_prep_minutes.sql"]  # the deploy
+        row = conn.execute("SELECT name, base_servings, instructions, prep_minutes FROM recipes").fetchone()
+    finally:
+        conn.close()
+    assert row == {"name": "Bread", "base_servings": 2, "instructions": "Bake.", "prep_minutes": 0}
 
 def test_badly_named_migration_is_rejected(tmp_path):
     (tmp_path / "2_add_column.sql").write_text("SELECT 1")
@@ -52,7 +69,7 @@ def test_health_reads_and_writes_the_database(database_url, monkeypatch):
     response = create_app(database_url).test_client().get("/health")
     assert response.status_code == 200
     assert response.get_json() == {"status": "ok", "db": "ok", "version": "3f2a9c1"}
-    assert versions(database_url) == ["001_init.sql"]  # the write test was rolled back
+    assert versions(database_url) == ["001_init.sql", "002_add_prep_minutes.sql"]  # write test rolled back
 
 
 def test_health_is_503_when_the_database_is_down(database_url, monkeypatch, caplog):

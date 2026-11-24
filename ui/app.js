@@ -134,10 +134,11 @@ function home() {
 async function recipeList() {
   const { body: recipes } = await call(RECIPES_API, "/recipes");
   const rows = recipes.map((r) =>
-    `<tr><td><a href="#/recipes/${r.id}">${esc(r.name)}</a></td><td>${esc(r.base_servings)}</td></tr>`).join("");
+    `<tr><td><a href="#/recipes/${r.id}">${esc(r.name)}</a></td><td>${esc(r.base_servings)}</td>
+     <td>${r.prep_minutes ? `${esc(r.prep_minutes)} min` : "-"}</td></tr>`).join("");
   render(`
     <div class="actions"><h1>Recipes</h1><a class="button" href="#/recipes/new">+ New recipe</a></div>
-    ${recipes.length ? `<table><tr><th>Name</th><th>Servings</th></tr>${rows}</table>` : "<p>No recipes yet.</p>"}`);
+    ${recipes.length ? `<table><tr><th>Name</th><th>Servings</th><th>Prep time</th></tr>${rows}</table>` : "<p>No recipes yet.</p>"}`);
 }
 
 async function recipeDetail(id) {
@@ -147,7 +148,7 @@ async function recipeDetail(id) {
     `<tr><td>${qty(i.quantity)} ${esc(i.unit)}</td><td>${esc(i.name)}</td></tr>`).join("");
   render(`
     <h1>${esc(recipe.name)}</h1>
-    <p>Serves ${esc(recipe.base_servings)}</p>
+    <p>Serves ${esc(recipe.base_servings)}${recipe.prep_minutes ? ` · ${esc(recipe.prep_minutes)} min` : ""}</p>
     <h2>Ingredients</h2><table>${rows}</table>
     <h2>Instructions</h2><p class="pre">${esc(recipe.instructions)}</p>
     <div id="errors"></div>
@@ -163,7 +164,7 @@ async function recipeDetail(id) {
 }
 
 async function recipeForm(id) {
-  let recipe = { name: "", base_servings: "", ingredients: [], instructions: "" };
+  let recipe = { name: "", base_servings: "", prep_minutes: "", ingredients: [], instructions: "" };
   if (id) {
     const { status, body } = await call(RECIPES_API, `/recipes/${id}`);
     if (status === 404) return render("<p>That recipe doesn't exist.</p>");
@@ -178,6 +179,8 @@ async function recipeForm(id) {
       <input id="name" name="name" value="${esc(recipe.name)}" required>
       <label for="base_servings">Servings</label>
       <input id="base_servings" name="base_servings" type="number" min="1" value="${esc(recipe.base_servings)}" required>
+      <label for="prep_minutes">Preparation time (minutes, optional)</label>
+      <input id="prep_minutes" name="prep_minutes" type="number" min="0" value="${esc(recipe.prep_minutes)}">
       <label for="ingredients">Ingredients</label>
       <p class="hint">One per line: quantity, unit, name. Units: ${UNITS.join(", ")}. Example: <code>200 g flour</code></p>
       <textarea id="ingredients" name="ingredients" rows="8">${esc(lines)}</textarea>

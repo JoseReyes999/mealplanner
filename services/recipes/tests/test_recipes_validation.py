@@ -53,7 +53,13 @@ def test_valid_form_has_no_errors():
     assert errors == []
     assert data["name"] == "Pancakes"
     assert data["base_servings"] == 4
+    assert data["prep_minutes"] == 0
     assert len(data["ingredients"]) == 3
+
+def test_prep_minutes_is_read_when_given():
+    data, errors = parse_recipe_form(valid_form(prep_minutes=" 25 "))
+    assert errors == []
+    assert data["prep_minutes"] == 25
 
 
 def test_blank_lines_are_ignored():
@@ -67,6 +73,8 @@ def test_blank_lines_are_ignored():
     ({"base_servings": "0"}, "greater than 0"),
     ({"base_servings": "four"}, "whole number"),
     ({"instructions": ""}, "Instructions are required"),
+    ({"prep_minutes": "-5"}, "can't be negative"),
+    ({"prep_minutes": "ten"}, "whole number of minutes"),
     ({"ingredients": ""}, "at least one ingredient"),
     ({"ingredients": "200 g flour\n100 g Flour"}, "listed twice"),
     ({"ingredients": "200 g flour\n2 cup milk"}, "unknown unit"),

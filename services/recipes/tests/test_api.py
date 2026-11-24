@@ -49,6 +49,11 @@ def test_create_rejects_invalid_input(client, body, message):
     assert response.status_code == 400
     assert any(message in e for e in response.get_json()["errors"])
 
+def test_prep_minutes_round_trip(client):
+    assert create(client).get_json()["prep_minutes"] == 0  # not sent: defaults to 0
+    body = create(client, name="Bread", ingredients="1 kg flour", prep_minutes=90).get_json()
+    assert body["prep_minutes"] == 90
+    assert client.post("/recipes", json={**PANCAKES, "prep_minutes": -1}).status_code == 400
 
 def test_list_recipes(client):
     create(client)

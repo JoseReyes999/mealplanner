@@ -31,6 +31,7 @@ def _payload_as_form():
     return {
         "name": str(body.get("name", "")),
         "base_servings": str(body.get("base_servings", "")),
+        "prep_minutes": str(body.get("prep_minutes", "")),
         "instructions": str(body.get("instructions", "")),
         "ingredients": str(ingredients),
     }

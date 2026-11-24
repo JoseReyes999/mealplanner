@@ -181,20 +181,22 @@ components:
 
     RecipeSummary:
       type: object
-      required: [id, name, base_servings, created_at]
+      required: [id, name, base_servings, prep_minutes, created_at]
       properties:
         id: { type: integer }
         name: { type: string }
         base_servings: { type: integer, minimum: 1 }
+        prep_minutes: { type: integer, minimum: 0, description: Added by migration 002; 0 for older recipes. }
         created_at: { type: string, example: "2026-11-19 16:14:37" }
 
     Recipe:
       type: object
-      required: [id, name, base_servings, instructions, created_at, ingredients]
+      required: [id, name, base_servings, prep_minutes, instructions, created_at, ingredients]
       properties:
         id: { type: integer }
         name: { type: string }
         base_servings: { type: integer, minimum: 1 }
+        prep_minutes: { type: integer, minimum: 0, description: Added by migration 002; 0 for older recipes. }
         instructions: { type: string }
         created_at: { type: string, example: "2026-11-19 16:14:37" }
         ingredients:
@@ -207,6 +209,7 @@ components:
       properties:
         name: { type: string, example: Pancakes }
         base_servings: { type: integer, minimum: 1, example: 4 }
+        prep_minutes: { type: integer, minimum: 0, default: 0, description: Optional; 0 if missing., example: 20 }
         instructions: { type: string, example: Mix and fry. }
         ingredients:
           description: One line per ingredient, "quantity unit name", as one text block or a list.

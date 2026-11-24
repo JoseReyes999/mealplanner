@@ -30,13 +30,13 @@ def _insert_lines(conn, recipe_id, ingredients):
         )
 
 
-def create_recipe(conn, name, base_servings, instructions, ingredients):
+def create_recipe(conn, name, base_servings, instructions, ingredients, prep_minutes=0):
     """Insert a recipe and its ingredient lines in one transaction. Returns the new id."""
     with conn:  # commits if everything succeeds, rolls back if anything fails
         recipe_id = conn.execute(
-            "INSERT INTO recipes (name, base_servings, instructions) OUTPUT INSERTED.id "
-            "VALUES (%s, %s, %s)",
-            (name, base_servings, instructions),
+            "INSERT INTO recipes (name, base_servings, prep_minutes, instructions) OUTPUT INSERTED.id "
+            "VALUES (%s, %s, %s, %s)",
+            (name, base_servings, prep_minutes, instructions),
         ).fetchone()["id"]
         _insert_lines(conn, recipe_id, ingredients)
     return recipe_id
@@ -45,14 +45,14 @@ def create_recipe(conn, name, base_servings, instructions, ingredients):
 def list_recipes(conn):
     """All recipes, alphabetically, without their ingredients."""
     return conn.execute(
-        f"SELECT id, name, base_servings, {CREATED_AT} FROM recipes ORDER BY name"
+        f"SELECT id, name, base_servings, prep_minutes, {CREATED_AT} FROM recipes ORDER BY name"
     ).fetchall()
 
 
 def get_recipe(conn, recipe_id):
     """One recipe with its ingredient lines, or None if it doesn't exist."""
     recipe = conn.execute(
-        f"SELECT id, name, base_servings, instructions, {CREATED_AT} FROM recipes WHERE id = %s",
+        f"SELECT id, name, base_servings, prep_minutes, instructions, {CREATED_AT} FROM recipes WHERE id = %s",
         (recipe_id,),
     ).fetchone()
     if recipe is None:
@@ -70,12 +70,13 @@ def get_recipe(conn, recipe_id):
     return recipe
 
 
-def update_recipe(conn, recipe_id, name, base_servings, instructions, ingredients):
+def update_recipe(conn, recipe_id, name, base_servings, instructions, ingredients, prep_minutes=0):
     """Replace a recipe's fields and all its ingredient lines. Returns False if it doesn't exist."""
     with conn:
         cursor = conn.execute(
-            "UPDATE recipes SET name = %s, base_servings = %s, instructions = %s WHERE id = %s",
-            (name, base_servings, instructions, recipe_id),
+            "UPDATE recipes SET name = %s, base_servings = %s, prep_minutes = %s, instructions = %s "
+            "WHERE id = %s",
+            (name, base_servings, prep_minutes, instructions, recipe_id),
         )
         if cursor.rowcount == 0:
             return False
