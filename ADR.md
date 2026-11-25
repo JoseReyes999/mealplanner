@@ -49,40 +49,40 @@ Consequences: The code stays simpler and there is no password to protect, making
 
 Date: 2026-11-23
 Status: Decided
-Context: Assignment 2 specifies that we need two independently deployable services where each contains its own database. In Assignment 1 (ADR-2), the planner could only reach recipes through 4 functions in recipes/service.py, and plan_entries.recipe_id was already a soft reference with no foreign key.
-Decision: The separation from ADR-2 persists: `recipes` owns recipes and ingredients, while `planner` owns plans and entries. The service functions used before became HTTP endpoints, so crossing this separation is now 3 GET calls: `GET /recipes` (recipe names in the plan grid), `GET /recipes/{id}` (whether the recipe exists), and `GET /recipes/{id}/scaled?servings=N` (the scaled ingredients for each planned meal, for the shopping list). `recipes_client.py` kept the same function names so that `shopping.py` did not need any change; the `get_recipe_ingredients` function was deleted because the shopping list only needs the scaled version. The planner finds recipes through the environment variable `RECIPES_URL` (http://recipes:8000 in compose, the Container App URL on Azure). Every call has a 2 s timeout. The Flask templates were replaced by JSON APIs and a static UI (ui/); this decision was made because the UI runs on a storage static website that calls both services from the browser, which is why ADR-1 is superseded.
-ADR-2 held: the split only meant swapping the function calls for HTTP calls and moving each domain into its own folder. No business logic had to move.
-Alternatives considered: One of the alternatives considered was to move the shopping list into recipes: rejected because recipes would then need plan data, which would just flip the dependency. Another alternative is to keep a copy or cache of the recipe names in the planner: this has not been built, being a good candidate for ADR-10.
-Consequences: Thanks to these decisions, each service can be deployed, scaled and fail on its own, and recipes going down no longer breaks the plan page. One cost is that the shopping list makes one HTTP call per planned meal, up to 21 for a full week, so it's slower than one SQL query and depends on recipes being up. Another cost is two contracts to keep in sync; the openapi.yaml files plus the tests that compare them with the routes cover that. The cross-seam integration test replaces recipes with a stub that answers the same HTTP endpoints (details in ADR-9).
+Context: Assignment 2 needs two independently deployable services, each with its own database. In Assignment 1 (ADR-2) the planner could only reach recipes through 4 functions in recipes/service.py, and plan_entries.recipe_id was already a soft reference.
+Decision: The seam stayed where ADR-2 put it: recipes owns recipes and ingredients, planner owns plans and entries. The service functions became HTTP endpoints, so what crosses the seam is 3 GET calls from the planner: GET /recipes (names for the plan), GET /recipes/{id} (does the recipe exist) and GET /recipes/{id}/scaled?servings=N (ingredients for the shopping list). recipes_client.py kept the same function names, so shopping.py did not change. The planner finds recipes through RECIPES_URL and every call has a 2 s timeout. The Flask templates were replaced by JSON APIs and a static UI, since the UI now runs on a storage static website and calls both services from the browser (ADR-1 superseded).
+ADR-2 held: the split only swapped function calls for HTTP calls and moved each domain into its own folder. No business logic moved.
+Alternatives considered: Moving the shopping list into recipes, rejected because recipes would then need plan data and the dependency would just flip. Caching recipe names in the planner, not built (ADR-10).
+Consequences: Each service deploys and fails on its own, and recipes being down no longer breaks the plan page. The cost is that the shopping list makes one HTTP call per planned meal (up to 21 a week), and the two APIs must stay in sync, which the OpenAPI documents and their tests cover.
 
-## 7. Data and migrations: one SQL Server database per service, versioned migrations
+## 7. Data and migrations: one SQL Server database per service
 
 Date: 2026-11-23
 Status: Decided
-Context: Before, I only had one SQLite file with all 5 tables, and the schema was created on every boot with CREATE TABLE IF NOT EXISTS. Now each service needs its own database and login. Once the database holds data, the schema has to change without losing it, and IF NOT EXISTS cannot alter an existing table.
-Decision: One database per service: SQL Server runs as a container locally and as Azure SQL serverless on Azure. Each service logs in with its own contained user (recipes_app, planner_app), which has access only to its own database. I tested this by logging in as recipes_app to the planner database, which failed with "Login failed". Each service starts with 001_init.sql, because the data from Assignment 1 was only test data. It recreates the Assignment 1 schema in SQL Server syntax:
+Context: Before, one SQLite file held all 5 tables and the schema was created on every boot with CREATE TABLE IF NOT EXISTS. Now each service needs its own database and login, and once a database holds data the schema has to change without losing it.
+Decision: Each service has its own SQL Server database (a container locally, Azure SQL serverless on Azure) and its own contained user (recipes*app, planner_app) with access only to its own database; logging in as recipes_app to the planner database fails. The Assignment 1 data was only test data, so instead of copying it each service starts from 001_init.sql, the same schema in SQL Server syntax (INT IDENTITY, NVARCHAR, MERGE instead of ON CONFLICT, OUTPUT INSERTED.id instead of lastrowid). migrate.py applies the files in migrations/ in order at startup, records each one in schema_migrations so it never runs twice, and runs each file in one transaction so a broken file leaves nothing half-applied. This is safe because there is at most 1 replica.
+Integrity lost at the seam: plan_entries.recipe_id can't have a foreign key to a table in another database, and deleting a recipe can't cascade into plans. To compensate, the planner asks recipes whether a recipe exists before saving an entry (503 and nothing saved if recipes is down), shows deleted recipes as "(deleted recipe)", and leaves them out of the shopping list. Everything else (CHECKs, unique ingredient names, cascades) is still enforced inside each database.
+Recovery plan for a bad migration: migrations are forward-only. A migration that fails rolls back, the container doesn't start and the CD health check fails, so I fix the file or revert and deploy again. A migration that ran but was wrong is fixed with a new file (003*...), never by editing one that already ran. Lost data can be recovered with Azure SQL point-in-time restore. Changes are additive (new columns with a DEFAULT, nothing dropped), like 002.
+Alternatives considered: Keeping SQLite inside the container, rejected because the container is replaced on every deploy and scales to zero, so the data would be lost.
+Consequences: Tests now need SQL Server (Docker locally, a service container in CI), startup is a bit slower, and no query can join across the two domains. In return, schema changes are versioned files that apply the same way locally, in CI and on Azure.
 
-- INTEGER PRIMARY KEY → INT IDENTITY
-- TEXT → NVARCHAR, and week_start became a real DATE
-- COLLATE NOCASE → a case-insensitive collation
-- RESTRICT → NO ACTION
-- ON CONFLICT upsert → MERGE
-- lastrowid → OUTPUT INSERTED.id
+## 8. Serverless hosting on Azure
 
-The versioned migrations (migrate.py):
+Date: 2026-11-25
+Status: Decided
+Context: The system runs on my Azure for Students subscription and should only cost money when it is used. The professor's deployment guide defines the shape (storage static website, Container Apps, Azure SQL serverless), replacing the Static Web Apps in the assignment text.
+Decision: Everything is in rg-jmreyes-ieu2024 (francecentral). The UI is a static website on the storage account jmreyesieu2024ui (cents per GB). The two services run in Container Apps (jmreyes-ieu2024-recipes and -planner) with min 0 and max 1 replica, billed per second only while running, with no Log Analytics workspace. Each service has its own serverless database on jmreyes-ieu2024-sql using the free offer: it pauses after 60 minutes idle and pauses instead of billing when the free allowance runs out. Images are on GHCR and the pipeline signs in with a managed identity, so no password is stored.
+Consequences: Scale-to-zero means cold starts. The first request starts the container and Azure answers 503 "App port is not ready" until it is ready, so the UI retries page loads for about 30 seconds (never saves). A paused database answers error 40613 for about a minute (I hit it myself), so db.connect retries with backoff and the CD health check waits up to about 10 minutes. Migrations run at startup, which is only safe because there is at most 1 replica. Logs only exist while a replica is running: the replica that logged migration 002 was gone after scaling to zero, so I proved it with the schema_migrations table instead.
+At 100x traffic: min replicas of at least 1 and more than 1 max replica, which means moving migrations out of startup into a separate step that runs once per deploy. The databases would leave the free offer, with more vCores and no auto-pause. I would also add a batch endpoint or cache for the shopping list (about 20 calls per list, ADR-10) and Log Analytics so logs survive.
+Alternatives considered: App Service or provisioned SQL, rejected because they cost money even when idle. AKS, rejected as far too much for two small services.
 
-- files named NNN_description.sql, applied in order at startup
-- each file recorded in schema_migrations, so a second start applies nothing
-- each file runs in one transaction, so a broken file leaves nothing half-applied (there's a test for that)
-- safe at startup because there's max 1 replica
+## 9. Pipeline and testing
 
-Now there is no foreign key from `plan_entries.recipe_id` to recipes, because they exist in different databases, and a deletion cannot cascade into plans. This is compensated by the following:
-
-1. before saving an entry, the planner asks recipes whether the recipe exists (and if recipes is down: 503, nothing saved)
-2. a deleted recipe shows as "(deleted recipe)" in the plan
-3. deleted recipes are left out of the shopping list and counted in missing_recipes
-
-Integrity is maintained inside each database (CHECK constraints, unique ingredient name, cascade from recipe to its lines and from plan to its entries).
-Recovery plan for a bad migration: Migrations are forward-only, there are no down-migrations. If a migration fails, its transaction rolls back, the new container doesn't start and the health check in CD fails the run; the fix is a corrected file or a revert, deployed again. If a migration ran but was wrong, it is fixed with a new migration (003\_...), never by editing a file that already ran on Azure, because schema_migrations would not run it again. If data was lost, the last resort is Azure SQL point-in-time restore from its automatic backups. To keep data safe, changes are additive: new columns get a DEFAULT, and nothing is dropped or renamed in the same step.
-Alternatives considered: One of the alternatives considered was to keep SQLite inside the container. This was rejected because the container is replaced on every deploy and scales to zero, so the file would be lost.
-Consequences: The cost is that the tests now need SQL Server (Docker locally, and a service container in CI). The startup is slower because of connections and migration checks, and no SQL query can join across the two domains. On the other hand, the gain is that schema changes are reviewed, versioned files that apply the same way locally, in CI and on Azure.
+Date: 2026-11-25
+Status: Decided
+Context: Every push to main deploys to Azure, so CI has to stop broken changes before they get there. With two services, a real SQL Server and HTTP between them, ADR-4 (SQLite tests) is superseded.
+Decision: CI runs on every branch push and pull request, and again in CD on main. It validates system.yaml against the course schema and both openapi.yaml files, lints with ruff, runs the tests against a real SQL Server container (same engine as Azure, because of MERGE, OUTPUT and IDENTITY), fails below 70% coverage of the service code (currently about 99%), and builds both images. CD then pushes SHA-tagged images, deploys with OIDC and fails unless /health answers 200 with that commit's SHA.
+The cross-seam test replaces the recipes service with a stub (StubRecipesService) that answers the same paths and JSON shapes and checks every call has a timeout. With the stub up it tests the real flow (names, existence check, merged shopping list); with it down it tests the failure handling (plan still shown, adding returns 503 and saves nothing, shopping list returns 503). A stub is faster and more controllable than running both services in CI; the OpenAPI tests keep it honest by checking both sides of the seam match their documents.
+Not tested on purpose: the UI JavaScript (checked by hand), Azure itself (CI never touches Azure SQL), cold start times, load, and the CD workflow (verified by running it).
+Alternatives considered: SQLite or a mocked database in tests, rejected because they would pass while SQL Server-specific code breaks.
+Consequences: each test job waits about a minute for SQL Server, and local tests need Docker. The CI password in the workflow is not a secret: it only exists in the throwaway CI container. In return, anything merged has passed the checks that protect the deploy.
