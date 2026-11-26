@@ -30,7 +30,7 @@ Update (2026-10-01): the planner domain added two tables, meal_plans and plan_en
 ## 4. Test businnes logic directly, against real temporary sqlite3 database
 
 Date: 2026-09-28
-Status: Decided
+Status: Superseded by [9]
 Context: The assignment requires a 70% test coverage on business logic, for the case of MealPlanner, the logic is based mostly in calculations (parsing ingredient lines, scaling, unit conversion, and merging the shopping list) where an error produces a bad list with no visible error. Several important rules (CASCADE, RESTRICT, CHECK, COLLATE, NOCASE) are enforced by SQLite itself, so they can be verifieda against a real database.
 Decision: The tests go in three levels. First, pure functions with no database (validation.py, scaling.py, untis.py, and shopping.py), since they have the main logic and run fastest. Second, the repositories against a real temporary SQLite file created with pytest's tmp_path, so that this way the restrictions mentioned beefore could actually be exercised. Lastly, a few end to end page tests with Flask's test client, and a test in planner that verifies planner only imports service.py from recipes.py.
 Alternatives considered: Mocking the database, rejected because the integrity rules live inside the SQLite, so a mock would pass regardless if the schema is wrong. Testing only through the web pages, rejected because those tests are slower and if one fails it is hard to determine what caused it (logic, SQL, or template).
@@ -86,3 +86,12 @@ The cross-seam test replaces the recipes service with a stub (StubRecipesService
 Not tested on purpose: the UI JavaScript (checked by hand), Azure itself (CI never touches Azure SQL), cold start times, load, and the CD workflow (verified by running it).
 Alternatives considered: SQLite or a mocked database in tests, rejected because they would pass while SQL Server-specific code breaks.
 Consequences: each test job waits about a minute for SQL Server, and local tests need Docker. The CI password in the workflow is not a secret: it only exists in the throwaway CI container. In return, anything merged has passed the checks that protect the deploy.
+
+## 10. Not built: a batch endpoint or cache for the shopping list
+
+Date: 2026-11-26
+Status: Decided
+Context: To build a shopping list the planner calls GET /recipes/{id}/scaled once per planned meal. The Azure logs show it: one shopping list made about 20 calls to recipes in 1.5 seconds. If recipes is down or still waking up, the shopping list is not available at all.
+Decision: I did not build either fix. One option is a batch endpoint (one POST /recipes/scaled with every recipe id and its servings, answered in one call). The other is a cache in the planner that keeps the last known ingredients of each recipe, so the shopping list could still be built when recipes is down.
+Alternatives considered: The batch endpoint changes the contract on both sides of the seam (new endpoint, new OpenAPI entries, new tests) to save about a second for 4-6 users. The cache keeps a second copy of recipe data in the planner, which goes stale when a recipe is edited and needs rules for when to refresh it, which is the kind of coupling ADR-2 and ADR-6 avoid. For a shared flat, 1.5 seconds is acceptable and a clear 503 is an honest answer.
+Consequences: The main consequence is that the shopping list function will be slow and it depends on recipes being up. It would be worth building the batch endpoint if the list takes more than 2-3 seconds or traffic grows (at 100x, 20 calls per list multiply quickly and keep recipes awake), and the cache if users need the shopping list even while recipes is down.
